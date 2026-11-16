@@ -1,27 +1,45 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "dentalhome-bridge",
-  "account_id": "b771f88cc6e239524474b06e15637bf4",
-  "main": "worker/index.ts",
-  "compatibility_date": "2024-11-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
-  },
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
-  "observability": {
-    "enabled": true
-  },
-  "vars": {
-    "SUPABASE_URL": "https://khwyzlhthadyyixjuhgb.supabase.co",
-    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtod3l6bGh0aGFkeXlpeGp1aGdiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDI4NjkzNywiZXhwIjoyMDk5ODYyOTM3fQ.Mw_dOwfsE0GfMtdAooa6JaevvgGH004VKzHEh3Erltg",
-    "VITE_SUPABASE_URL": "https://khwyzlhthadyyixjuhgb.supabase.co",
-    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtod3l6bGh0aGFkeXlpeGp1aGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyODY5MzcsImV4cCI6MjA5OTg2MjkzN30.VG1GQpHX-SWGmS3yEc7BrnnGFPu0s59CElqd0yMUiBY",
-    "NXLINK_WEBHOOK_URL": "https://yjpcz5h8j1hh.jp.larksuite.com/base/automation/webhook/event/I1zFaj1bKwhtEYhg2NxjNlTmpWb",
-    "NXLINK_WEBHOOK_CLIENT_ID": "nxw_41ef8e4dee35cd8e4c6c1d3e"
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "dentalhome-bridge",
+	"account_id": "8cdd10fb658a4321e986dd23f87eb6ae",
+	"main": "worker/index.ts",
+	"compatibility_date": "2024-11-01",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"triggers": {
+		"crons": [
+			"*/2 * * * *"
+		]
+	},
+	"observability": {
+		"enabled": true
+	},
+	// Secrets (set with `wrangler secret put`): NXLINK_ACCOUNT, NXLINK_PASSWORD,
+	// LARK_CREATED_WEBHOOK_URL, LARK_UPDATED_WEBHOOK_URL. SYNC_START_AT is left unset: the first
+	// production run records its own start time and only picks up chats started after it.
+	"vars": {
+		"NXLINK_TENANT_ID": "4600",
+		"NXLINK_FLOW_NAME": "[MY]DentalHome_v4",
+		"LARK_UPDATE_DELAY_SECONDS": "60",
+		"DRY_RUN": "true"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "NXLINK_TOKEN",
+			"id": "50bb85349661470ea2402047af0bc4a0"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "dentalhome-bridge",
+			"database_id": "673f32bd-cc5f-415b-9238-d56980664d34"
+		}
+	]
 }

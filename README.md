@@ -1,254 +1,73 @@
-# NxLink CRM & Data Bridge (DentalHome)
+# Dental Home Lead Bridge
 
-A modern full-stack CRM dashboard and automated data synchronization bridge. This system connects **NxLink AI Flow Manager**, **Supabase PostgreSQL**, and **Lark Multidimensional Base Webhooks** to centralize customer conversations, extract patient metadata, provide operational analytics, and route qualified leads in real time.
+A Cloudflare Worker that turns NxLink chatbot sessions (flow `[MY]DentalHome_v4`, tenant 4600) into leads in a Lark Base.
+It polls NxLink every 2 minutes, tracks each session in Cloudflare D1, and sends two Lark webhooks per lead.
+A small portal (Sessions page) shows what the bridge is tracking.
 
----
-
-## 1. System Architecture & Data Flow
-
-```mermaid
-graph TD
-    Cron[Cloudflare Worker Cron Trigger: every 5 min] -->|Triggers| Sync[Sync Pipeline /api/sync-nxlink]
-    UI[React Dashboard: Manual Sync Button] -->|Triggers| Sync
-    
-    Sync -->|1. Scrape/Fetch auth token| NxAuth[NxLink Auth / plat_token]
-    Sync -->|2. Query conversations| NxConv[NxLink Conversations API]
-    Sync -->|3. Query chat transcripts & audio| NxMsg[NxLink Messages API]
-    
-    Sync -->|4. Parse sentiment, next steps, patient info| Parser[Data Normalizer]
-    Parser -->|5. Upsert conversations & profiles| Supabase[(Supabase Database)]
-    
-    Parser -->|6. Check lead tags| LeadCheck{Hot / Warm / Booking?}
-    LeadCheck -->|Yes| LarkProxy[Webhook Proxy /api/push-webhook]
-    LarkProxy -->|7. Forward payload| Lark[Lark Multidimensional Base]
-    
-    Supabase -->|Real-time query & auth| Frontend[React SPA Dashboard]
+```
+NxLink conversations ──(cron, every 2 min)──> Worker ──> D1 (sessions)
+                                                 │
+                                                 ├─ Lark "Created" webhook: Cold lead at the customer's first message
+                                                 └─ Lark "Updated" webhook: verdict when the chat ends, goes quiet or reopens
 ```
 
-### Core Architecture Components:
-1. **Frontend (Vite + React 19 + Tailwind CSS v4)**: An administrative and support portal for reviewing conversations, listening to call recordings, tracking customer interactions, managing internal users, and viewing database capacity metrics.
-2. **Cloudflare Worker (`worker/index.ts`)**: Edge runtime hosting API endpoints, scheduled cron jobs (`*/5 * * * *`), and serving frontend production assets (`dist/`).
-3. **Database (Supabase PostgreSQL)**: Stores normalized conversations, phone-indexed customer profiles, RBAC user profiles, application settings, and webhook audit logs.
-4. **Outbound Lark Webhook Proxy**: Securely forwards qualified leads to Lark Multidimensional tables with client credentials and HMAC signing.
+## Lead lifecycle
 
----
-
-## 2. Key Features & Modules
-
-- **Conversations Dashboard (`/`)**:
-  - Live conversation stream with channel indicators (`Website`, `WA`, `FB`, `IG`).
-  - Embedded audio player for phone/call recordings.
-  - Formatted transcript viewer with AI-extracted sentiment, appointment next steps, preferred branch, date, and treatment.
-  - Manual sync trigger and individual webhook retry buttons.
-  - Date filtering (today, yesterday, this week, custom date ranges) and CSV export.
-- **Customer Directory (`/customers`)**:
-  - Consolidated customer directory keyed by unique phone number.
-  - Tracks total customer touchpoints, health score ratings, and last active timestamp.
-- **Reports & Analytics (`/reports`)**:
-  - Visual breakdown of sentiment distribution, conversion rates, and branch volume.
-- **User Management & RBAC (`/users`)**:
-  - Manage application access and role assignment (`admin`, `support`, `sales`).
-  - Synchronized directly with Supabase Auth identities via `/api/manage-user`.
-- **Database Metrics (`/db-metrics`)**:
-  - Monitors Supabase PostgreSQL storage usage, table row byte overhead, daily incoming traffic rate, and projected days/years until free-tier capacity limits are reached.
-- **Dynamic App Settings (`/app-settings`)**:
-  - Allows administrators to update the destination Lark Webhook URL dynamically in Supabase without requiring a code rebuild or redeployment.
-- **Technical API Docs (`/api-docs`)**:
-  - Integrated documentation and test payload templates for `/api/ingest-crm` and Lark webhook payloads.
-
----
-
-## 3. Technology Stack
-
-- **Frontend**:
-  - [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-  - [Vite 6](https://vite.dev/)
-  - [Tailwind CSS v4](https://tailwindcss.com/)
-  - [React Router v7](https://reactrouter.com/)
-  - [Lucide React](https://lucide.dev/) (Icons)
-- **Backend & Edge**:
-  - [Cloudflare Workers](https://workers.cloudflare.com/) (`worker/index.ts`)
-  - [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
-  - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
-  - Alternative legacy support: [Netlify Functions](https://www.netlify.com/products/functions/)
-- **Database & Authentication**:
-  - [Supabase](https://supabase.com/) (PostgreSQL with Row Level Security & Supabase Auth)
-- **External APIs**:
-  - NxLink AI Admin Flow Manager & Open API
-  - Lark Base / Lark Open Platform Webhooks
-
----
-
-## 4. Environment Variables Configuration
-
-Create a `.env` file in the root directory for local development:
-
-```bash
-# Supabase Configuration
-VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
-SUPABASE_URL=https://<your-project-id>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
-
-# Internal API Secret
-API_SECRET_KEY=your_secure_internal_api_key
-
-# Webhook Integration (Lark Base)
-NXLINK_WEBHOOK_URL=https://<lark-webhook-endpoint>
-NXLINK_WEBHOOK_CLIENT_ID=<lark-client-id>
-NXLINK_WEBHOOK_CLIENT_SECRET=<lark-client-secret>
-
-# Automated Sync Interval (Minutes)
-NXLINK_SYNC_INTERVAL_MINUTES=5
-
-# NxLink Authentication (Optional fallback or token service)
-NXLINK_PLAT_TOKEN=eyJhbGciOi...
-NXAI_TOKEN_URL=https://<token-service-url>
-```
-
-| Variable | Scope | Description |
+| Event | When | Lark |
 |---|---|---|
-| `VITE_SUPABASE_URL` | Client & Worker | Public URL for Supabase API |
-| `VITE_SUPABASE_ANON_KEY` | Client & Worker | Public anonymous key for client queries |
-| `SUPABASE_URL` | Worker / Node | Supabase project URL for server functions |
-| `SUPABASE_SERVICE_ROLE_KEY` | Worker / Node | Service role key (bypasses RLS for sync & user administration) |
-| `API_SECRET_KEY` | Worker / Node | Secret key used for authenticating internal requests |
-| `NXLINK_WEBHOOK_URL` | Worker / Node | Default outbound webhook destination for qualifying leads |
-| `NXLINK_WEBHOOK_CLIENT_ID` | Worker / Node | Client ID for webhook authentication |
-| `NXLINK_WEBHOOK_CLIENT_SECRET` | Worker / Node | Client Secret for webhook authentication |
-| `NXLINK_PLAT_TOKEN` | Worker / Node | Static fallback NxLink bearer token |
-| `NXAI_TOKEN_URL` | Worker / Node | Shared service endpoint to fetch a dynamic `plat_token` |
+| Customer sends the first message | next sync (≤ 2 min) | **Created**: Lead Status Cold, Session Status Open |
+| NxLink closes the chat with tags + summary | next sync, then the update goes out on the sync after (≥ 60 s after Created) | **Updated**: Lead Status from tags, summary fields |
+| Customer silent for 2 h | next sync | **Updated**: Session Status Abandoned |
+| Abandoned customer writes again (watched 30 h, checked hourly) | within ~1 h | **Updated**: Session Status Open |
+| Chat opened but customer never typed | — | never sent |
 
----
+Lead Status comes from NxLink tags (with or without the `DH - ` prefix): `Emergency` > `Hot Lead` > `Warm Lead` > `Cold Lead`, default Cold.
+Name, phone, branch, date and treatment are read from the labelled summary NxLink writes when it closes a chat.
+Branch is always one of the five Lark dropdown names, or left blank; when the summary gives none, the branch in Lisa's booking recap is used.
+The Updated webhook leaves out unknown fields so it never blanks something staff typed in Lark.
 
-## 5. Local Development Setup
+## Code
 
-### Prerequisites
-- Node.js (v20+ recommended)
-- npm or pnpm
-- Python 3 with Playwright (only if using `nxlink_get_plat_token.py` for headless auth scraping)
-
-### Installation
-```bash
-# Clone the repository and navigate into the folder
-cd nxlink-crm
-
-# Install dependencies
-npm install
-```
-
-### Running the Frontend Locally
-```bash
-npm run dev
-```
-Runs the Vite development server on `http://localhost:5173`. In development, Vite includes built-in middleware (`netlifyFunctionsDevPlugin`) simulating the `/api/sync-nxlink` route directly.
-
-### Running Cloudflare Worker Locally
-```bash
-npm run cf:dev
-```
-Builds the project and simulates the Cloudflare Worker runtime and static asset hosting via `wrangler dev`.
-
-### Running Manual Sync Scripts
-```bash
-# Run one-off sync against NxLink and store records in Supabase
-npm run sync:local
-
-# Trigger batch webhook sync for unpushed leads
-npm run sync:webhook
-```
-
----
-
-## 6. Deployment Methods
-
-### Method A: Cloudflare Workers (Primary / Production)
-
-The primary deployment runs on **Cloudflare Workers** using Worker Static Assets. A single deployment command compiles the Vite SPA into `./dist` and uploads the worker bundle along with scheduled cron triggers.
-
-#### 1. Cloudflare Login
-Ensure you are logged into your Cloudflare account with Wrangler:
-```bash
-npx wrangler login
-```
-
-#### 2. Configure Worker Variables & Secrets
-Check `wrangler.jsonc`. Variables that are non-sensitive can be placed under `"vars"`, while sensitive keys should be registered as secrets in Cloudflare:
-
-```bash
-# Set secrets on Cloudflare Workers
-npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-npx wrangler secret put NXLINK_WEBHOOK_CLIENT_SECRET
-npx wrangler secret put NXLINK_PLAT_TOKEN
-```
-
-#### 3. Build & Deploy
-Deploy both the frontend bundle and edge worker in one step:
-```bash
-npm run deploy
-```
-*(Executes `tsc -b && vite build && wrangler deploy`)*
-
-#### 4. Scheduled Worker Crons
-The sync trigger is defined in `wrangler.jsonc`:
-```jsonc
-"triggers": {
-  "crons": ["*/5 * * * *"]
-}
-```
-Every 5 minutes, Cloudflare automatically triggers `runNxlinkSync(env)` to fetch fresh conversations and push qualified leads without requiring external schedulers.
-
----
-
-### Method B: Netlify (Alternative / Legacy)
-
-The repository also includes configuration for hosting on Netlify:
-- **Build settings** are controlled in `netlify.toml`:
-  - Build command: `npm run build`
-  - Publish directory: `dist`
-  - Functions directory: `netlify/functions`
-  - Cron trigger: `[functions."sync-nxlink-cron"]` runs every 5 minutes (`*/5 * * * *`).
-- **Deploying to Netlify**:
-  1. Link the repository to Netlify via Git or run `npx netlify deploy --build --prod`.
-  2. Populate the required environment variables in **Netlify Dashboard > Site Configuration > Environment Variables**.
-
----
-
-### Method C: Database Initialization (Supabase)
-
-Before deploying the frontend or worker, initialize the database tables, indexes, and Row Level Security policies:
-1. Open your project in the **Supabase Dashboard**.
-2. Navigate to the **SQL Editor**.
-3. Copy and run the contents of [`supabase_schema.sql`](./supabase_schema.sql).
-4. The schema creates:
-   - `conversations`: Primary record table with channel, sentiment, metadata, and webhook sync statuses.
-   - `customer_profiles`: Consolidated profile table aggregated by phone number.
-   - `profiles`: Application users with roles (`admin`, `support`, `sales`).
-   - `app_settings`: Key-value storage for dynamic runtime settings (e.g., dynamic webhook URL).
-   - `webhook_logs`: Incoming payload logs for auditability.
-
----
-
-## 7. Webhook Lead Qualification Rules
-
-When the sync job runs (via cron or manual trigger), conversations are evaluated against specific tag rules before being forwarded to the Lark Base webhook:
-
-- **Qualified Leads**: Must contain tags such as `hot lead`, `warm lead`, or `booking appointment`.
-- **Exclusions**:
-  - Conversations tagged exclusively with routing tags (`to agent`, `branch agent`, `contact agent`) are excluded.
-  - Conversations tagged with `emergency` or `check booking` are filtered out of automated lead routing.
-- **Sync Tracking**: When successfully pushed, `conversations.webhook_status` updates to `synced` along with a timestamp in `webhook_synced_at`.
-
----
-
-## 8. Useful NPM Scripts Reference
-
-| Command | Action |
+| Path | What |
 |---|---|
-| `npm run dev` | Starts local Vite development server |
-| `npm run build` | Compiles TypeScript and builds production frontend bundle |
-| `npm run cf:dev` | Builds frontend and starts local Cloudflare Worker preview |
-| `npm run deploy` | Builds and deploys application to Cloudflare Workers |
-| `npm run sync:local` | Manually runs synchronization script via Node.js CLI |
-| `npm run sync:webhook` | Re-checks unpushed leads and pushes them to the configured webhook |
-| `npm run lint` | Runs Oxlint for code quality and linter checks |
+| `worker/session-sync.ts` | The sync: list sessions, read transcripts when needed, decide state, send webhooks |
+| `worker/summary.ts` | Parses NxLink's labelled summary; maps `source_channel` to WA/FB/IG/Webchat |
+| `worker/nxlink-auth.ts` | Logs in to NxLink, caches the token in KV, checks it belongs to the expected tenant |
+| `worker/index.ts` | Cron handler and the portal API (`/api/sessions`, `/api/sync-sessions`) |
+| `src/pages/Sessions.tsx` | Portal page |
+| `migrations/` | D1 schema |
+
+Transcripts are never stored. Budgets are sized for the Workers free plan (≤ 50 subrequests and D1 queries per run).
+
+## Configuration
+
+Plain settings live in `wrangler.jsonc` (`NXLINK_TENANT_ID`, `NXLINK_FLOW_NAME`, `LARK_UPDATE_DELAY_SECONDS`, `DRY_RUN`).
+Secrets are set with `npx wrangler secret put <NAME>`:
+
+- `NXLINK_ACCOUNT`, `NXLINK_PASSWORD`: a dedicated NxLink login for the tenant
+- `LARK_CREATED_WEBHOOK_URL`, `LARK_UPDATED_WEBHOOK_URL`
+
+Optional: `ABANDON_AFTER_MINUTES` (120), `VERDICT_WAIT_MINUTES` (15), `WATCH_HOURS` (30), `WATCH_RECHECK_MINUTES` (60), `RETENTION_DAYS`, `SYNC_START_AT` (if unset, the first live run records its own start time and earlier chats are ignored).
+
+The portal and API are protected by Cloudflare Access on the Worker's domain; the Worker itself has no login.
+
+## Local development
+
+```bash
+npm install
+npx vite build                         # portal -> dist/
+npx wrangler d1 migrations apply DB --local
+npx wrangler dev --port 8787 --local   # http://localhost:8787
+```
+
+Local settings and secrets go in `.dev.vars` (gitignored). The cron doesn't run locally: press **Sync now** in the portal or call `/api/sync-sessions`.
+
+## Deploy
+
+```bash
+npx wrangler d1 migrations apply DB --remote
+npm run deploy
+npx wrangler tail                      # watch the cron runs
+```
+
+Deploy with `DRY_RUN` set to `"true"` first, check the logs, then set it to `"false"` and deploy again.

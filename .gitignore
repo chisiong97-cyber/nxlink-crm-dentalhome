@@ -31,5 +31,6 @@ dist-ssr
 .env
 .env.*
 .nxlink_creds
+.dev.vars
 playwright_session.json
 *.xlsx
