@@ -46,10 +46,12 @@ Secrets are set with `npx wrangler secret put <NAME>`:
 
 - `NXLINK_ACCOUNT`, `NXLINK_PASSWORD`: a dedicated NxLink login for the tenant
 - `LARK_CREATED_WEBHOOK_URL`, `LARK_UPDATED_WEBHOOK_URL`
+- `PORTAL_PASSWORD`: the password for the portal and API (browser login box, any username)
 
 Optional: `ABANDON_AFTER_MINUTES` (120), `VERDICT_WAIT_MINUTES` (15), `WATCH_HOURS` (30), `WATCH_RECHECK_MINUTES` (60), `RETENTION_DAYS`, `SYNC_START_AT` (if unset, the first live run records its own start time and earlier chats are ignored).
 
-The portal and API are protected by Cloudflare Access on the Worker's domain; the Worker itself has no login.
+Every request to the portal and API needs `PORTAL_PASSWORD` (HTTP Basic Auth); if it isn't set, everything is refused.
+The cron isn't affected. Cloudflare Access can replace this later for per-person logins.
 
 ## Local development
 

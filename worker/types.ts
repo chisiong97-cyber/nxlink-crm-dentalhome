@@ -16,4 +16,5 @@ export interface Env {
   SYNC_START_AT?: string;
   LARK_UPDATE_DELAY_SECONDS?: string;
   DRY_RUN?: string;
+  PORTAL_PASSWORD?: string;
 }

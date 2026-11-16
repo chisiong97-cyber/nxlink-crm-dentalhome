@@ -1,9 +1,17 @@
 import { Env } from './types';
 import { runSessionSync } from './session-sync';
 
-// The portal and API sit behind Cloudflare Access, which handles login before requests reach the Worker
+// The portal and API hold patient names and phones, so every request needs the portal password
+// (HTTP Basic Auth, any username). Without PORTAL_PASSWORD set, everything is refused.
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (!(await isAuthorized(request, env.PORTAL_PASSWORD))) {
+      return new Response('Login required', {
+        status: 401,
+        headers: { 'WWW-Authenticate': 'Basic realm="Dental Home Leads", charset="UTF-8"' }
+      });
+    }
+
     const pathname = new URL(request.url).pathname;
 
     if (pathname === '/api/sync-sessions') {
@@ -29,6 +37,22 @@ export default {
     ctx.waitUntil(runSessionSync(env));
   }
 };
+
+async function isAuthorized(request: Request, password: string | undefined): Promise<boolean> {
+  if (!password) return false;
+  const header = request.headers.get('Authorization') || '';
+  if (!header.startsWith('Basic ')) return false;
+  let supplied = '';
+  try {
+    const decoded = atob(header.slice(6));
+    supplied = decoded.slice(decoded.indexOf(':') + 1);
+  } catch (e) {
+    return false;
+  }
+  // Compare digests so the check takes the same time whatever was typed
+  const digest = async (s: string) => crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return crypto.subtle.timingSafeEqual(await digest(supplied), await digest(password));
+}
 
 async function jsonResponse(fn: () => Promise<unknown>): Promise<Response> {
   try {

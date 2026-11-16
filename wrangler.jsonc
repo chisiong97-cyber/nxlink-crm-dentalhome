@@ -10,7 +10,9 @@
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		// Every request goes through the Worker's password check, including the portal's own files
+		"run_worker_first": true
 	},
 	"triggers": {
 		"crons": [
@@ -20,7 +22,7 @@
 	"observability": {
 		"enabled": true
 	},
-	// Secrets (set with `wrangler secret put`): NXLINK_ACCOUNT, NXLINK_PASSWORD,
+	// Secrets (set with `wrangler secret put`): NXLINK_ACCOUNT, NXLINK_PASSWORD, PORTAL_PASSWORD,
 	// LARK_CREATED_WEBHOOK_URL, LARK_UPDATED_WEBHOOK_URL. SYNC_START_AT is left unset: the first
 	// production run records its own start time and only picks up chats started after it.
 	"vars": {
