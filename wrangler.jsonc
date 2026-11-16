@@ -29,7 +29,7 @@
 		"NXLINK_TENANT_ID": "4600",
 		"NXLINK_FLOW_NAME": "[MY]DentalHome_v4",
 		"LARK_UPDATE_DELAY_SECONDS": "60",
-		"DRY_RUN": "true"
+		"DRY_RUN": "false"
 	},
 	"kv_namespaces": [
 		{
